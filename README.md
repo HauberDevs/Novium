@@ -3,6 +3,7 @@
 This is a public transport software, similiar to what you would see at train stations. It pulls data from the BVG Departures using the [API provided by transport.rest](https://v6.bvg.transport.rest/). Made with Python 3.4 and works on Windows XP and up.
 
 Also please note that this app was made purely for fun and entertainment purposes and isnt exactly meant to be used in a production enviroment. If used in  a public enviroment, please ensure you get permission by BVG first.
+
 ![App Screenshot](https://raw.githubusercontent.com/HauberRBLX/Novium/refs/heads/main/novium-screenshot.png)
 
 ## Compile it yourself

@@ -1,0 +1,3 @@
+@echo off
+echo Compiling Novium binary using Py2Exe...
+python setup.py py2exe

@@ -1,0 +1,37 @@
+{
+    "stopId": 900003201,
+    "stopName": "S+U Berlin Hauptbahnhof",
+    "reqBaseUrl": "https://v6.bvg.transport.rest/stops/{stopId}/departures?linesOfStops=false&remarks=false",
+    "reqOptions": {
+        "language": "de",
+        "suburban": true,
+        "subway": true,
+        "tram": true,
+        "bus": true,
+        "ferry": false,
+        "express": true,
+        "regional": true
+    },
+    "updateInterval": 60,
+    "fullscreen": true,
+    "showcursor": false,
+    "LogsFolder": "logs\\",
+    "FrontendErrorMessages": {
+       "no_departures_text": "Derzeit keine Abfahrten von dieser Haltestelle.\nBitte Fahrplanaushang beachten.",
+       "network_error": "Aufgrund einer technischen Störung ist diese Fahrtzielanzeige\nvorübergehend außer Betrieb. Bitte beachten sie den\nFahrplanaushang oder die Anzeigen am Gleis.\n\nWir entschuldigen uns für die Unannehmlichkeiten\nund wünschen ihnen eine schöne Reise."
+    },
+    "LineStyles": {
+        "S": {"bg": "#008e4e", "fg": "white"},
+        "U": {"bg": "#0664ab", "fg": "white"},
+        "ICE": {"bg": "#b5b6b5", "fg": "black", "font_size": 8},
+        "M8": {"bg": "#ef7300", "fg": "white"},
+        "M5": {"bg": "#c98a38", "fg": "white"},
+        "M10": {"bg": "#007c3a", "fg": "white"},
+        "3DIGIT": {"bg": "#95276e", "fg": "white"},
+        "M41": {"bg": "#95276e", "fg": "white"},
+        "IC": {"bg": "#ea1d26", "fg": "white"},
+        "RE": {"bg": "#e2001a", "fg": "white"},
+        "RB": {"bg": "#66aa22", "fg": "white"},
+        "FEX": {"bg": "#79122f", "fg": "white"}
+    }
+}

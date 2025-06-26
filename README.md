@@ -20,7 +20,7 @@ Also please note that this app was made purely for fun and entertainment purpose
 
 To run the app, please make sure you have the [Visual C++ 2010 Redistributales](https://download.microsoft.com/download/E/E/0/EE05C9EF-A661-4D9E-BCE2-6961ECDF087F/vcredist_x86.exe) installed. Otherwise the app will not run and will throw an error that  MSVCR100.dll was not found.
 
-If you run into any issues, please open a bug report on the [Issues Tab](https://github.com/HauberRBLX/Novium/issues) and provide a output of your console.
+If you run into any issues, please open a bug report on the [Issues Tab](https://github.com/HauberRBLX/Novium/issues) with the "development" tag and provide a output of your console.
 
 ## Acknowledgements
 

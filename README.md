@@ -26,5 +26,3 @@ If you run into any issues, please open a bug report on the [Issues Tab](https:/
 
  - [Readme.so Generator](https://readme.so)
  - [transport.rest](https://transport.rest)
-
-![App Screenshot](https://via.placeholder.com/468x300?text=App+Screenshot+Here)

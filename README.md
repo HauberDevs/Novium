@@ -8,8 +8,9 @@ Also please note that this app was made purely for fun and entertainment purpose
 
 ## Compile it yourself
 
-> [!WARNING]  
-> If you are looking for compiled binaries, please go to the [Releases](https://github.com/HauberRBLX/Novium/releases) Tab. The following is mainly for developers to compile their own executables for Novium.
+> [!NOTE]  
+> If you are looking for compiled binaries, please go to the [Releases](https://github.com/HauberRBLX/Novium/releases) Tab.
+> The following is mainly for developers to compile their own executables for Novium.
 
 1. First off, please make sure that you have [Python 3.4.10](https://matejhorvat.si/en/windows/python/index.htm) installed as this is what the application was made with. Please also make sure you follow the installations instructions inside that folder.
 

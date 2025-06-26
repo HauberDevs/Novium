@@ -1,2 +1,2 @@
 # Novium
-Public Display Software that shows departures
+Currently under construction.

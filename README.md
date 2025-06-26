@@ -16,7 +16,7 @@ Also please note that this app was made purely for fun and entertainment purpose
 
 3. Make any changes to the script as you desire
 
-4. Compile it by opening the "compile.bat". If successful, the newly compiled binary will be available in the ```dist``` folder.
+4. Compile it by opening the "compile.bat" script located in the root folder. If successful, the newly compiled binary will be available in the ```dist``` folder.
 
 To run the app, please make sure you have the [Visual C++ 2010 Redistributales](https://download.microsoft.com/download/E/E/0/EE05C9EF-A661-4D9E-BCE2-6961ECDF087F/vcredist_x86.exe) installed. Otherwise the app will not run and will throw an error that  MSVCR100.dll was not found.
 

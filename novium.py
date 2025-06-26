@@ -8,7 +8,7 @@ import ctypes
 import logging
 from PIL import Image, ImageTk
 
-APP_VERSION = "1.8.1"
+APP_VERSION = "1.0"
 CONFIG_FILE = "config.json"
 LOGS_FOLDER_NAME = "logs"
 IMAGE_FOLDER = "images"

@@ -8,7 +8,7 @@
         "subway": true,
         "tram": true,
         "bus": true,
-        "ferry": false,
+        "ferry": true,
         "express": true,
         "regional": true
     },
@@ -23,7 +23,7 @@
     "LineStyles": {
         "S": {"bg": "#008e4e", "fg": "white"},
         "U": {"bg": "#0664ab", "fg": "white"},
-        "ICE": {"bg": "#b5b6b5", "fg": "black", "font_size": 8},
+        "ICE": {"bg": "#b5b6b5", "fg": "black"},
         "M8": {"bg": "#ef7300", "fg": "white"},
         "M5": {"bg": "#c98a38", "fg": "white"},
         "M10": {"bg": "#007c3a", "fg": "white"},
@@ -32,6 +32,8 @@
         "IC": {"bg": "#ea1d26", "fg": "white"},
         "RE": {"bg": "#e2001a", "fg": "white"},
         "RB": {"bg": "#66aa22", "fg": "white"},
-        "FEX": {"bg": "#79122f", "fg": "white"}
+        "FEX": {"bg": "#79122f", "fg": "white"},
+        "EC": {"bg": "#0023b2", "fg": "white"},
+        "FLX": {"bg": "#77d808", "fg": "white"}
     }
 }

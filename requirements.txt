@@ -1,4 +1,3 @@
-# Benötigte Pakete für Novium auf Python 3.4.10, optimiert für Windows XP
 requests==2.21.0
 pillow==4.3.0
 certifi==2018.1.18

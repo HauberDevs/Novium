@@ -6,9 +6,10 @@ import sys
 from datetime import datetime, timedelta
 import ctypes
 import logging
+import threading
 from PIL import Image, ImageTk
 
-APP_VERSION = "1.0"
+APP_VERSION = "1.1"
 CONFIG_FILE = "config.json"
 LOGS_FOLDER_NAME = "logs"
 IMAGE_FOLDER = "images"
@@ -69,6 +70,18 @@ def setup_logging():
     except Exception:
         pass
 
+def load_font(ttf_path):
+    """Load a .ttf font from a file without installing it system-wide."""
+    if os.path.exists(ttf_path):
+        FR_PRIVATE = 0x10
+        try:
+            ctypes.windll.gdi32.AddFontResourceExW(ttf_path, FR_PRIVATE, 0)
+            logging.info("Loaded font: {0}".format(ttf_path))
+        except Exception as e:
+            logging.error("Failed to load font: {0}, Error: {1}".format(ttf_path, e))
+    else:
+        logging.error("Font not found: {0}".format(ttf_path))
+
 def safe_after_cancel(root, after_id):
     try:
         if after_id is not None:
@@ -93,7 +106,7 @@ def update_clock(hour_label, colon_label, minute_label, toggle_colon_visibility,
 
         if toggle_colon_visibility[0]:
             if colon_label.winfo_exists():
-                colon_label.config(fg="black")
+                colon_label.config(fg="white")
         else:
             if colon_label.winfo_exists():
                 colon_label.config(fg=header_bg_color)
@@ -187,143 +200,137 @@ def fetch_departures(content_frame, config, root):
     global fetch_after_id, running, is_closing
     if not running or is_closing:
         return
-    try:
-        clear_content(content_frame)
 
-        stop_name = config.get("stopName", "Stationsname wird geladen...")
+    def fetch_in_thread():
+        try:
+            stop_id = config.get("stopId")
+            req_base_url = config.get("reqBaseUrl")
+            req_options = config.get("reqOptions", {})
 
-        stop_id = config.get("stopId")
-        req_base_url = config.get("reqBaseUrl")
-        req_options = config.get("reqOptions", {})
+            if stop_id is None or req_base_url is None:
+                return
 
-        if stop_id is None or req_base_url is None:
-            return  # no config
+            url = req_base_url.format(stopId=stop_id)
+            params = {k: str(v).lower() for k, v in req_options.items()}
 
-        url = req_base_url.format(stopId=stop_id)
-        params = {k: str(v).lower() for k, v in req_options.items()}
+            logging.info("Fetching departures from base URL {0} with params {1}".format(url, params))
+            response = requests.get(url, params=params, timeout=10, verify="cacert.pem")
+            response.raise_for_status()
+            data = response.json()
+        except Exception as e:
+            data = {"error": str(e)}
 
-        logging.info("Fetching departures from base URL {0} with params {1}".format(url, params))
+        def update_ui():
+            if not running or is_closing:
+                return
+            clear_content(content_frame)
 
-        response = requests.get(url, params=params, timeout=10, verify="cacert.pem")
-        response.raise_for_status()
-        data = response.json()
-
-        logging.info("Received data from API endpoint")
-
-        departures_list = data.get("departures", [])
-
-        if not departures_list:
-            logging.info("No departures returned from API")
-            
-            if content_frame.winfo_exists():
-                no_departures_label = tk.Label(content_frame, text=FRONTEND_ERROR_MSG_NO_DEPARTURES_TEXT, fg="white", bg="#122080", font=("Roboto", 24), wraplength=content_frame.winfo_width() - 40)
-                no_departures_label.pack(expand=True, fill=tk.BOTH, padx=20, pady=20)
-        else:
-            logging.info("{0} departures retrieved from API".format(len(departures_list)))
-            screen_height = root.winfo_screenheight()
-
-            header_height = 80
-            row_height = 60 + 1  # element height + padding
-
-            available_height = screen_height - header_height
-            max_rows = available_height // row_height
-
-            logging.debug("LineStyles available: {0}".format(config.get("LineStyles", {})))
-            for i, departure in enumerate(departures_list[:max_rows]):
-                if not running or is_closing:
-                    break
-                if not content_frame.winfo_exists():
-                    break
-                element_frame = tk.Frame(content_frame, bg="#122080", height=60)
-                element_frame.pack_propagate(False)
-                element_frame.pack(fill=tk.X, pady=1)
-                
-                line_name = departure.get("line", {}).get("name", "N/A")
-                destination_name = departure.get("destination", {}).get("name", "N/A")
-                platform_name = departure.get("platform")
-                raw_when = departure.get("when")
-
-                formatted_time = format_departure_time(raw_when)
-
-                main_fg_color = "white"
-                main_bg_color = "#122080"
-
-                time_fg_color = main_fg_color
-                time_font_weight = "normal"
-                time_font_size = 24
-                line_font_decoration = "bold"
-                destination_font_decoration = ""
-                platform_display_text = ""
-
-                style = get_line_style(line_name, config.get("LineStyles", {}))
-                if style:
-                    line_label_bg = style.get("bg", main_bg_color)
-                    line_label_fg = style.get("fg", main_fg_color)
-                    line_font_size = style.get("fontSize", 27)
+            if "error" in data:
+                logging.error("An error occurred trying to fetch data: {0}".format(data["error"]))
+                label = tk.Label(content_frame, text=FRONTEND_ERROR_MSG_NETWORK_ERROR_TEXT,
+                                 fg="white", bg="#122080",
+                                 font=("DB Neo Screen Sans Regular", 24),
+                                 wraplength=content_frame.winfo_width() - 40)
+                label.pack(expand=True, fill=tk.BOTH, padx=20, pady=20)
+            else:
+                departures_list = data.get("departures", [])
+                if not departures_list:
+                    logging.info("No departures returned from API")
+                    no_departures_label = tk.Label(
+                        content_frame,
+                        text=FRONTEND_ERROR_MSG_NO_DEPARTURES_TEXT,
+                        fg="white",
+                        bg="#122080",
+                        font=("", 24),
+                        wraplength=content_frame.winfo_width() - 40
+                    )
+                    no_departures_label.pack(expand=True, fill=tk.BOTH, padx=20, pady=20)
                 else:
-                    line_label_bg = main_bg_color
-                    line_label_fg = main_fg_color
-                    line_font_size = 27
+                    logging.info("{0} departures retrieved from API".format(len(departures_list)))
+                    screen_height = root.winfo_screenheight()
+                    header_height = 80
+                    row_height = 61
+                    available_height = screen_height - header_height
+                    max_rows = available_height // row_height
 
-                is_cancelled = False
-                if not raw_when or not platform_name:
-                        is_cancelled = True
-                        formatted_time = ""  # no text
-                        platform_display_text = ""  # no platform
-                else:
-                    if platform_name:
-                        platform_display_text = str(platform_name)
+                    for i, departure in enumerate(departures_list[:max_rows]):
+                        if not running or is_closing or not content_frame.winfo_exists():
+                            break
 
-                line_display_frame = tk.Frame(element_frame, bg=line_label_bg, width=100)
-                line_display_frame.pack_propagate(False)
-                line_display_frame.pack(side=tk.LEFT, fill=tk.Y)
+                        element_frame = tk.Frame(content_frame, bg="#122080", height=60)
+                        element_frame.pack_propagate(False)
+                        element_frame.pack(fill=tk.X, pady=1)
 
-                line_label = tk.Label(line_display_frame, text=line_name, fg=line_label_fg, bg=line_label_bg,
-                                      font=("Roboto", 27, line_font_decoration))
-                line_label.pack(padx=5, pady=0, fill=tk.BOTH, expand=True)
+                        line_name = departure.get("line", {}).get("name", "N/A")
+                        destination_name = departure.get("destination", {}).get("name", "N/A")
+                        platform_name = departure.get("platform")
+                        raw_when = departure.get("when")
 
-                line_display_frame.update_idletasks()  # Make sure sizes are updated
-                text_width = line_label.winfo_reqwidth()
-                frame_width = line_display_frame.winfo_width()
-                if text_width > frame_width:
-                    start_marquee(line_label, line_name)
+                        formatted_time = format_departure_time(raw_when)
+                        main_fg_color = "white"
+                        main_bg_color = "#122080"
+                        time_fg_color = main_fg_color
+                        time_font_weight = "normal"
+                        time_font_size = 24
+                        line_font_decoration = "bold"
+                        destination_font_decoration = ""
+                        platform_display_text = ""
 
-                destination_label = tk.Label(element_frame, text=destination_name,
-                                     fg=main_fg_color, bg=main_bg_color,
-                                     font=("Roboto", 24, destination_font_decoration))
-                destination_label.pack(side=tk.LEFT, padx=20, pady=(5, 0))
+                        style = get_line_style(line_name, config.get("LineStyles", {}))
+                        line_label_bg = style.get("bg", main_bg_color)
+                        line_label_fg = style.get("fg", main_fg_color)
+                        line_font_size = style.get("font_size", 27)
 
-                element_frame.update_idletasks()
-                dest_text_width = destination_label.winfo_reqwidth()
-                dest_label_width = destination_label.winfo_width()
-                if dest_text_width > dest_label_width:
-                    start_marquee(destination_label, destination_name)
-                    spacer_frame = tk.Frame(element_frame, bg=main_bg_color)
-                    spacer_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+                        is_cancelled = not raw_when or not platform_name
+                        if is_cancelled:
+                            formatted_time = ""
+                            platform_display_text = ""
+                        else:
+                            platform_display_text = str(platform_name) if platform_name else ""
 
-                time_label = tk.Label(element_frame, text=formatted_time, fg=time_fg_color, bg=main_bg_color,
-                                      font=("Roboto", time_font_size, time_font_weight))
-                time_label.pack(side=tk.RIGHT, padx=20, pady=(5, 0))
+                        line_display_frame = tk.Frame(element_frame, bg=line_label_bg, width=100)
+                        line_display_frame.pack_propagate(False)
+                        line_display_frame.pack(side=tk.LEFT, fill=tk.Y)
 
-                if platform_display_text:
-                    platform_label = tk.Label(element_frame, text=platform_display_text, fg=main_fg_color, bg=main_bg_color,
-                                              font=("Roboto", 24))
-                    platform_label.pack(side=tk.RIGHT, padx=20, pady=(5, 0))
+                        line_label = tk.Label(line_display_frame, text=line_name, fg=line_label_fg, bg=line_label_bg,
+                                              font=("DB Neo Screen Sans Bold", line_font_size, line_font_decoration))
+                        line_label.pack(padx=5, pady=0, fill=tk.BOTH, expand=True)
 
-        update_interval = config.get("updateInterval", 60)
-        next_update_time = datetime.now() + timedelta(seconds=update_interval)
-        fetch_after_id = root.after(update_interval * 1000, lambda: fetch_departures(content_frame, config, root))
-        logging.info("Next update scheduled at {0}".format(next_update_time.strftime("%d.%m.%Y %H:%M:%S")))
+                        line_display_frame.update_idletasks()
+                        if line_label.winfo_reqwidth() > line_display_frame.winfo_width():
+                            start_marquee(line_label, line_name)
+
+                        destination_label = tk.Label(element_frame, text=destination_name,
+                                                     fg=main_fg_color, bg=main_bg_color,
+                                                     font=("DB Neo Screen Sans Regular", 24, destination_font_decoration))
+                        destination_label.pack(side=tk.LEFT, padx=20, pady=(5, 0))
+
+                        element_frame.update_idletasks()
+                        if destination_label.winfo_reqwidth() > destination_label.winfo_width():
+                            start_marquee(destination_label, destination_name)
+                            spacer_frame = tk.Frame(element_frame, bg=main_bg_color)
+                            spacer_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+                        time_label = tk.Label(element_frame, text=formatted_time, fg=time_fg_color, bg=main_bg_color,
+                                              font=("DB Neo Screen Sans Regular", time_font_size, time_font_weight))
+                        time_label.pack(side=tk.RIGHT, padx=20, pady=(5, 0))
+
+                        if platform_display_text:
+                            platform_label = tk.Label(element_frame, text=platform_display_text,
+                                                      fg=main_fg_color, bg=main_bg_color,
+                                                      font=("DB Neo Screen Sans Bold", 24))
+                            platform_label.pack(side=tk.RIGHT, padx=20, pady=(5, 0))
+
+            update_interval = config.get("updateInterval", 60)
+            next_update_time = datetime.now() + timedelta(seconds=update_interval)
+            fetch_after_id = root.after(update_interval * 1000,
+                                        lambda: fetch_departures(content_frame, config, root))
+            logging.info("Next update scheduled at {0}".format(
+                next_update_time.strftime("%d.%m.%Y %H:%M:%S")))
+
+        root.after(0, update_ui)
         
-    except Exception as e:
-        logging.error("An error occured trying to fetch data from the API. Error Details: {0}".format(e))
-        passenger_frontend_error_label = tk.Label(content_frame, text=FRONTEND_ERROR_MSG_NETWORK_ERROR_TEXT, fg="white", bg="#122080", font=("Roboto", 24), wraplength=content_frame.winfo_width() - 40)
-        passenger_frontend_error_label.pack(expand=True, fill=tk.BOTH, padx=20, pady=20)
-
-        update_interval = config.get("updateInterval", 60)
-        next_update_time = datetime.now() + timedelta(seconds=update_interval)
-        fetch_after_id = root.after(update_interval * 1000, lambda: fetch_departures(content_frame, config, root))
-        logging.info("Next retry scheduled at {0}".format(next_update_time.strftime("%d.%m.%Y %H:%M:%S")))
+    threading.Thread(target=fetch_in_thread, daemon=True).start()
 
 def main():
     global running, is_closing, clock_after_id, fetch_after_id
@@ -335,6 +342,9 @@ def main():
 
     root = tk.Tk()
     root.withdraw()
+
+    load_font("fonts/DBNeoScreenSans-Regular.ttf")
+    load_font("fonts/DBNeoScreenSans-Bold.ttf")
 
     try:
         with open(CONFIG_FILE, "r") as f:
@@ -372,7 +382,7 @@ def main():
     except Exception:
         pass
 
-    header_bg_color = "#d8c800"
+    header_bg_color = "#122080"
     top_header_frame = tk.Frame(root, bg=header_bg_color)
     top_header_frame.pack(side=tk.TOP, fill=tk.X)
 
@@ -410,19 +420,19 @@ def main():
     logging.debug("Network Error Text: %s", FRONTEND_ERROR_MSG_NETWORK_ERROR_TEXT)
     
     stop_name = config.get("stopName", "Stationsname nicht festgelegt")
-    station_label = tk.Label(top_header_frame, text=stop_name, fg="black", bg=header_bg_color, font=("Roboto", 24, "bold"))
+    station_label = tk.Label(top_header_frame, text=stop_name, fg="white", bg=header_bg_color, font=("DB Neo Screen Sans Bold", 24))
     station_label.pack(side=tk.LEFT, padx=(0, 20), pady=10)
 
     clock_frame = tk.Frame(top_header_frame, bg=header_bg_color)
     clock_frame.pack(side=tk.RIGHT, padx=20, pady=10)
 
-    hour_label = tk.Label(clock_frame, text="", fg="black", bg=header_bg_color, font=("Roboto", 24, "bold"))
+    hour_label = tk.Label(clock_frame, text="", fg="white", bg=header_bg_color, font=("DB Neo Screen Sans Bold", 24))
     hour_label.pack(side=tk.LEFT)
 
-    colon_label = tk.Label(clock_frame, text=":", fg="black", bg=header_bg_color, font=("Roboto", 24, "bold"))
+    colon_label = tk.Label(clock_frame, text=":", fg="white", bg=header_bg_color, font=("DB Neo Screen Sans Bold", 24))
     colon_label.pack(side=tk.LEFT)
 
-    minute_label = tk.Label(clock_frame, text="", fg="black", bg=header_bg_color, font=("Roboto", 24, "bold"))
+    minute_label = tk.Label(clock_frame, text="", fg="white", bg=header_bg_color, font=("DB Neo Screen Sans Bold", 24))
     minute_label.pack(side=tk.LEFT)
 
     toggle_colon_visibility = [True]

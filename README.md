@@ -3,7 +3,7 @@
 This is a public transport software, similiar to what you would see at train stations. It pulls data from the BVG Departures using the [API provided by transport.rest](https://v6.bvg.transport.rest/). Made with Python 3.4 and works on Windows XP and up.
 
 > [!CAUTION]
-> This app was made purely for fun and is not really intended to be used commercially. If you want to use it publicly, please ensure you get permission by [BVG](https://bvg.de/) first.
+> This app was made purely for fun and is not really intended to be used commercially. **If you want to use it publicly, please ensure you get permission by [BVG](https://bvg.de/) first.**
 
 ![App Screenshot](https://raw.githubusercontent.com/HauberRBLX/Novium/refs/heads/main/novium-screenshot.png)
 
@@ -21,7 +21,7 @@ This is a public transport software, similiar to what you would see at train sta
 
 4. Compile it by opening the "compile.bat" script located in the root folder. If successful, the newly compiled binary will be available in the ```dist``` folder.
 
-To run the app, please make sure you have the [Visual C++ 2010 Redistributales](https://download.microsoft.com/download/E/E/0/EE05C9EF-A661-4D9E-BCE2-6961ECDF087F/vcredist_x86.exe) installed. Otherwise the app will not run and will throw an error that  MSVCR100.dll was not found.
+To run the app, please make sure you have the [Visual C++ 2010 Redistributale (32-bit)](https://download.microsoft.com/download/E/E/0/EE05C9EF-A661-4D9E-BCE2-6961ECDF087F/vcredist_x86.exe) installed. Otherwise the app will not run and will throw an error that MSVCR100.dll was not found.
 
 If you run into any issues, please open a bug report on the [Issues Tab](https://github.com/HauberRBLX/Novium/issues) with the "development" tag and provide a output of your console.
 

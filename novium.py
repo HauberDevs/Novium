@@ -9,7 +9,7 @@ import logging
 import threading
 from PIL import Image, ImageTk
 
-APP_VERSION = "1.1"
+APP_VERSION = "1.2"
 CONFIG_FILE = "config.json"
 LOGS_FOLDER_NAME = "logs"
 IMAGE_FOLDER = "images"
@@ -195,7 +195,6 @@ def get_line_style(line_name, styles_config):
     logging.debug("Line '{0}' did not match any style. Using default: {1}".format(line_name, style))
     return style
 
-
 def fetch_departures(content_frame, config, root):
     global fetch_after_id, running, is_closing
     if not running or is_closing:
@@ -246,6 +245,20 @@ def fetch_departures(content_frame, config, root):
                     )
                     no_departures_label.pack(expand=True, fill=tk.BOTH, padx=20, pady=20)
                 else:
+                    # Sort departures by minutes to departure (negative or zero = Jetzt)
+                    def minutes_to_departure(dep):
+                        when = dep.get("when") or dep.get("plannedWhen")
+                        try:
+                            if not when:
+                                return 99999  # Put unknown times at the end
+                            dt = datetime.strptime(when[:19], "%Y-%m-%dT%H:%M:%S")
+                            diff = (dt - datetime.now()).total_seconds() / 60.0
+                            return diff if diff > 0 else 0
+                        except Exception:
+                            return 99999
+
+                    departures_list.sort(key=minutes_to_departure)
+
                     logging.info("{0} departures retrieved from API".format(len(departures_list)))
                     screen_height = root.winfo_screenheight()
                     header_height = 80
@@ -263,30 +276,33 @@ def fetch_departures(content_frame, config, root):
 
                         line_name = departure.get("line", {}).get("name", "N/A")
                         destination_name = departure.get("destination", {}).get("name", "N/A")
-                        platform_name = departure.get("platform")
-                        raw_when = departure.get("when")
 
-                        formatted_time = format_departure_time(raw_when)
+                        # Use plannedWhen and plannedPlatform as fallback if when or platform are empty
+                        raw_when = departure.get("when") or departure.get("plannedWhen")
+                        platform_name = departure.get("platform") or departure.get("plannedPlatform")
+
+                        cancelled = departure.get("cancelled", False)
+
+                        if cancelled:
+                            formatted_time = "Fahrt fällt aus"
+                            platform_display_text = ""
+                            time_fg_color = "red"
+                            time_font_weight = "bold"
+                        else:
+                            formatted_time = format_departure_time(raw_when)
+                            platform_display_text = str(platform_name) if platform_name else ""
+                            time_fg_color = "white"
+                            time_font_weight = "normal"
+
                         main_fg_color = "white"
                         main_bg_color = "#122080"
-                        time_fg_color = main_fg_color
-                        time_font_weight = "normal"
-                        time_font_size = 24
                         line_font_decoration = "bold"
                         destination_font_decoration = ""
-                        platform_display_text = ""
 
                         style = get_line_style(line_name, config.get("LineStyles", {}))
                         line_label_bg = style.get("bg", main_bg_color)
                         line_label_fg = style.get("fg", main_fg_color)
                         line_font_size = style.get("font_size", 27)
-
-                        is_cancelled = not raw_when or not platform_name
-                        if is_cancelled:
-                            formatted_time = ""
-                            platform_display_text = ""
-                        else:
-                            platform_display_text = str(platform_name) if platform_name else ""
 
                         line_display_frame = tk.Frame(element_frame, bg=line_label_bg, width=100)
                         line_display_frame.pack_propagate(False)
@@ -312,7 +328,7 @@ def fetch_departures(content_frame, config, root):
                             spacer_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
                         time_label = tk.Label(element_frame, text=formatted_time, fg=time_fg_color, bg=main_bg_color,
-                                              font=("DB Neo Screen Sans Regular", time_font_size, time_font_weight))
+                                              font=("DB Neo Screen Sans Regular", 24, time_font_weight))
                         time_label.pack(side=tk.RIGHT, padx=20, pady=(5, 0))
 
                         if platform_display_text:
@@ -329,7 +345,7 @@ def fetch_departures(content_frame, config, root):
                 next_update_time.strftime("%d.%m.%Y %H:%M:%S")))
 
         root.after(0, update_ui)
-        
+
     threading.Thread(target=fetch_in_thread, daemon=True).start()
 
 def main():

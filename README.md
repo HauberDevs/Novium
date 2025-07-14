@@ -5,7 +5,7 @@ This is a public transport software, similiar to what you would see at train sta
 > [!CAUTION]
 > This app was made purely for fun and is not really intended to be used commercially. **If you want to use it publicly, please ensure you get permission by [BVG](https://bvg.de/) first.**
 
-![App Screenshot](https://raw.githubusercontent.com/HauberDevs/Novium/refs/heads/main/novium-screenshot.png)
+![Screenshot of the App (as of version 2.0)](https://raw.githubusercontent.com/HauberDevs/Novium/refs/heads/main/novium-screenshot.png)
 
 ## Compile it yourself
 

@@ -8,20 +8,20 @@ import ctypes
 import logging
 import threading
 from PIL import Image, ImageTk
+from modules.utils.luacfgparser import parse_lua_cfg as cfgparse
 
-APP_VERSION = "1.2"
-CONFIG_FILE = "config.json"
+APP_VERSION = "2.0"
+CONFIG_FILE = "novium.cfg"
 LOGS_FOLDER_NAME = "logs"
 IMAGE_FOLDER = "images"
-STOP_SIGN_IMAGE = "stopsign.png"
 
 passenger_frontend_error_fallback_text = (
-   "Aufgrund einer technischen Störung ist diese Fahrtzielanzeige\n"
-   "vorübergehend außer Betrieb. Bitte beachten sie den\n"
-   "Fahrplanaushang oder die Anzeigen am Gleis."
-   "\n\n"
-   "Wir entschuldigen uns für die Unannehmlichkeiten\n"
-   "und wünschen ihnen eine schöne Reise."
+    "Aufgrund einer technischen Störung ist diese Fahrtzielanzeige\n"
+    "vorübergehend außer Betrieb. Bitte beachten sie den\n"
+    "Fahrplanaushang oder die Anzeigen am Gleis."
+    "\n\n"
+    "Wir entschuldigen uns für die Unannehmlichkeiten\n"
+    "und wünschen ihnen eine schöne Reise."
 )
 
 no_departures_fallback_text = (
@@ -147,7 +147,7 @@ def format_departure_time(departure_datetime_str):
 def start_marquee(label, text, delay=150):
     """Make label text scroll horizontally if it's too wide."""
     # Store the full text and current position in label object
-    label.full_text = text + "   "  # Add spaces for smooth scrolling
+    label.full_text = text + "    "  # Add spaces for smooth scrolling
     label.pos = 0
 
     def scroll():
@@ -200,6 +200,34 @@ def fetch_departures(content_frame, config, root):
     if not running or is_closing:
         return
 
+    def map_field(departure, mapping, field_name, default=None):
+        path = mapping.get(field_name) if mapping else None
+
+        if path:
+            parts = path.split(".")
+            current = departure
+            for part in parts:
+                if isinstance(current, dict):
+                    current = current.get(part)
+                else:
+                    current = None
+                    break
+            if current is not None:
+                return current
+
+        if field_name == "line":
+            return departure.get("line", {}).get("name", "N/A")
+        elif field_name == "destination":
+            return departure.get("destination", {}).get("name", "N/A")
+        elif field_name == "time":
+            return departure.get("when") or departure.get("plannedWhen")
+        elif field_name == "platform":
+            return departure.get("platform") or departure.get("plannedPlatform")
+        elif field_name == "cancelled":
+            return departure.get("cancelled", False)
+
+        return default
+
     def fetch_in_thread():
         try:
             stop_id = config.get("stopId")
@@ -226,7 +254,7 @@ def fetch_departures(content_frame, config, root):
 
             if "error" in data:
                 logging.error("An error occurred trying to fetch data: {0}".format(data["error"]))
-                label = tk.Label(content_frame, text=FRONTEND_ERROR_MSG_NETWORK_ERROR_TEXT,
+                label = tk.Label(content_frame, text=passenger_frontend_error_fallback_text,
                                  fg="white", bg="#122080",
                                  font=("DB Neo Screen Sans Regular", 24),
                                  wraplength=content_frame.winfo_width() - 40)
@@ -237,7 +265,7 @@ def fetch_departures(content_frame, config, root):
                     logging.info("No departures returned from API")
                     no_departures_label = tk.Label(
                         content_frame,
-                        text=FRONTEND_ERROR_MSG_NO_DEPARTURES_TEXT,
+                        text=no_departures_fallback_text,
                         fg="white",
                         bg="#122080",
                         font=("", 24),
@@ -245,26 +273,31 @@ def fetch_departures(content_frame, config, root):
                     )
                     no_departures_label.pack(expand=True, fill=tk.BOTH, padx=20, pady=20)
                 else:
-                    # Sort departures by minutes to departure (negative or zero = Jetzt)
                     def minutes_to_departure(dep):
-                        when = dep.get("when") or dep.get("plannedWhen")
+                        when = map_field(dep, mapping, "time")
                         try:
                             if not when:
-                                return 99999  # Put unknown times at the end
+                                return 99999
                             dt = datetime.strptime(when[:19], "%Y-%m-%dT%H:%M:%S")
                             diff = (dt - datetime.now()).total_seconds() / 60.0
                             return diff if diff > 0 else 0
                         except Exception:
                             return 99999
 
+                    mapping = config.get("CustomResponseMapping", {})
                     departures_list.sort(key=minutes_to_departure)
 
                     logging.info("{0} departures retrieved from API".format(len(departures_list)))
-                    screen_height = root.winfo_screenheight()
+
+                    if config.get("fullscreen", True):
+                        height_ref = root.winfo_screenheight()
+                    else:
+                        height_ref = root.winfo_height()
+
                     header_height = 80
                     row_height = 61
-                    available_height = screen_height - header_height
-                    max_rows = available_height // row_height
+                    available_height = height_ref - header_height
+                    max_rows = available_height // row_height - 1
 
                     for i, departure in enumerate(departures_list[:max_rows]):
                         if not running or is_closing or not content_frame.winfo_exists():
@@ -274,14 +307,11 @@ def fetch_departures(content_frame, config, root):
                         element_frame.pack_propagate(False)
                         element_frame.pack(fill=tk.X, pady=1)
 
-                        line_name = departure.get("line", {}).get("name", "N/A")
-                        destination_name = departure.get("destination", {}).get("name", "N/A")
-
-                        # Use plannedWhen and plannedPlatform as fallback if when or platform are empty
-                        raw_when = departure.get("when") or departure.get("plannedWhen")
-                        platform_name = departure.get("platform") or departure.get("plannedPlatform")
-
-                        cancelled = departure.get("cancelled", False)
+                        line_name = map_field(departure, mapping, "line")
+                        destination_name = map_field(departure, mapping, "destination")
+                        raw_when = map_field(departure, mapping, "time")
+                        platform_name = map_field(departure, mapping, "platform")
+                        cancelled = map_field(departure, mapping, "cancelled")
 
                         if cancelled:
                             formatted_time = "Fahrt fällt aus"
@@ -309,7 +339,7 @@ def fetch_departures(content_frame, config, root):
                         line_display_frame.pack(side=tk.LEFT, fill=tk.Y)
 
                         line_label = tk.Label(line_display_frame, text=line_name, fg=line_label_fg, bg=line_label_bg,
-                                              font=("DB Neo Screen Sans Bold", line_font_size, line_font_decoration))
+                                             font=("DB Neo Screen Sans Bold", line_font_size, line_font_decoration))
                         line_label.pack(padx=5, pady=0, fill=tk.BOTH, expand=True)
 
                         line_display_frame.update_idletasks()
@@ -340,7 +370,7 @@ def fetch_departures(content_frame, config, root):
             update_interval = config.get("updateInterval", 60)
             next_update_time = datetime.now() + timedelta(seconds=update_interval)
             fetch_after_id = root.after(update_interval * 1000,
-                                        lambda: fetch_departures(content_frame, config, root))
+                                         lambda: fetch_departures(content_frame, config, root))
             logging.info("Next update scheduled at {0}".format(
                 next_update_time.strftime("%d.%m.%Y %H:%M:%S")))
 
@@ -350,8 +380,16 @@ def fetch_departures(content_frame, config, root):
 
 def main():
     global running, is_closing, clock_after_id, fetch_after_id
-    global FRONTEND_ERROR_MSG_NO_DEPARTURES_TEXT, FRONTEND_ERROR_MSG_NETWORK_ERROR_TEXT
+    global passenger_frontend_error_fallback_text, no_departures_fallback_text
     global line_styles
+    global scale
+
+    def get_scale_factor(root, base_width=1024, base_height=768):
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        scale_w = screen_width / base_width
+        scale_h = screen_height / base_height
+        return min(scale_w, scale_h)
 
     setup_logging()
     logging.info("Application initializing")
@@ -362,9 +400,11 @@ def main():
     load_font("fonts/DBNeoScreenSans-Regular.ttf")
     load_font("fonts/DBNeoScreenSans-Bold.ttf")
 
+    scale = get_scale_factor(root)
+
     try:
         with open(CONFIG_FILE, "r") as f:
-            config = json.load(f)
+            config = cfgparse(CONFIG_FILE)
     except Exception as e:
         ctypes.windll.user32.MessageBoxW(0,
             u"Fehler beim Laden der Konfigurationsdatei:\n{0}".format(e),
@@ -402,45 +442,88 @@ def main():
     top_header_frame = tk.Frame(root, bg=header_bg_color)
     top_header_frame.pack(side=tk.TOP, fill=tk.X)
 
-    stop_sign_path = os.path.join(os.getcwd(), IMAGE_FOLDER, STOP_SIGN_IMAGE)
-    stop_sign_photo = None
-    if os.path.exists(stop_sign_path):
-        try:
-            logging.info("---- BEGIN LOADING OF IMAGE {0} ----".format(stop_sign_path))
-            img = Image.open(stop_sign_path)
-            img = img.resize((40, 40), Image.LANCZOS)
-            stop_sign_photo = ImageTk.PhotoImage(img)
-            root.stop_sign_photo = stop_sign_photo
-            logging.info("---- END OF LOADING OF IMAGE {0} ----".format(stop_sign_path))
-        except Exception:
-            pass
+    logo_path = config.get("LogoImage")
+    db_logo_image = None
 
-    if stop_sign_photo:
-        tk.Label(top_header_frame, image=stop_sign_photo, bg=header_bg_color).pack(side=tk.LEFT, padx=(20, 5), pady=10)
+    if logo_path:
+        abs_logo_path = os.path.abspath(logo_path)
+        logging.info("Configured logo path: {0}".format(abs_logo_path))
 
-    frontend_errors = config.get("FrontendErrorMessages", {})
-    logging.info("FrontendErrorMessages in config: %s", frontend_errors)
-    
-    if not isinstance(frontend_errors, dict):
-        frontend_errors = {}
-        logging.debug("FrontendErrorMessages not found or invalid, using empty dict")
+        if os.path.exists(abs_logo_path):
+            try:
+                logging.info("---- BEGIN LOADING OF IMAGE {0} ----".format(abs_logo_path))
+                img = Image.open(abs_logo_path)
 
-    FRONTEND_ERROR_MSG_NO_DEPARTURES_TEXT = frontend_errors.get(
-        "no_departures_text", no_departures_fallback_text
+                # Scaling
+                orig_width, orig_height = img.size
+                max_size = int(40 * scale * 1.6)
+                if orig_width > orig_height:
+                    new_width = max_size
+                    new_height = int(orig_height * (max_size / orig_width))
+                else:
+                    new_height = max_size
+                    new_width = int(orig_width * (max_size / orig_height))
+
+                img = img.resize((new_width, new_height), Image.LANCZOS)
+                db_logo_image = ImageTk.PhotoImage(img)
+                root.db_logo_image = db_logo_image
+                logging.info("---- END OF LOADING OF IMAGE {0} ----".format(abs_logo_path))
+            except Exception as e:
+                logging.error("Failed to load logo image: {0}".format(e))
+        else:
+            logging.warning("Logo path configured but file does not exist: {0}".format(abs_logo_path))
+    else:
+        logging.warning("No LogoImage configured in the config file.")
+        
+    # Configure grid layout with 3 columns for the header
+    top_header_frame.columnconfigure(0, weight=1)
+    top_header_frame.columnconfigure(1, weight=1)
+    top_header_frame.columnconfigure(2, weight=1)
+
+    # Left frame for stop sign and station label
+    left_frame = tk.Frame(top_header_frame, bg=header_bg_color)
+    left_frame.grid(row=0, column=0, sticky="w", padx=20, pady=10)
+
+    if db_logo_image:
+        tk.Label(left_frame, image=db_logo_image, bg=header_bg_color).pack(side=tk.LEFT, padx=(0, 5))
+
+    center_frame = tk.Frame(top_header_frame, bg=header_bg_color)
+    center_frame.grid(row=0, column=1)
+
+    # Determine header text based on config type
+    display_type = config.get("type", "departures").lower()
+    if display_type == "arrivals":
+        german_text = "Ankünfte"
+        english_text = "Arrivals"
+    elif display_type == "departures":
+        german_text = "Abfahrten"
+        english_text = "Departures"
+    else:
+        # fallback if config type invalid
+        german_text = "Abfahrten"
+        english_text = "Departures"
+
+    abfahrten_label = tk.Label(
+        center_frame,
+        text=german_text,
+        fg="white",
+        bg=header_bg_color,
+        font=("DB Neo Screen Sans Bold", 24),
     )
-    FRONTEND_ERROR_MSG_NETWORK_ERROR_TEXT = frontend_errors.get(
-        "network_error", passenger_frontend_error_fallback_text
+    abfahrten_label.pack(side=tk.LEFT)
+
+    departures_label = tk.Label(
+        center_frame,
+        text=english_text,
+        fg="white",
+        bg=header_bg_color,
+        font=("DB Neo Screen Sans Regular", 20, "italic"),
     )
+    departures_label.pack(side=tk.LEFT, padx=(5,0))
 
-    logging.debug("No Departures Text: %s", FRONTEND_ERROR_MSG_NO_DEPARTURES_TEXT)
-    logging.debug("Network Error Text: %s", FRONTEND_ERROR_MSG_NETWORK_ERROR_TEXT)
-    
-    stop_name = config.get("stopName", "Stationsname nicht festgelegt")
-    station_label = tk.Label(top_header_frame, text=stop_name, fg="white", bg=header_bg_color, font=("DB Neo Screen Sans Bold", 24))
-    station_label.pack(side=tk.LEFT, padx=(0, 20), pady=10)
-
+    # Right frame for clock
     clock_frame = tk.Frame(top_header_frame, bg=header_bg_color)
-    clock_frame.pack(side=tk.RIGHT, padx=20, pady=10)
+    clock_frame.grid(row=0, column=2, sticky="e", padx=20, pady=10)
 
     hour_label = tk.Label(clock_frame, text="", fg="white", bg=header_bg_color, font=("DB Neo Screen Sans Bold", 24))
     hour_label.pack(side=tk.LEFT)
@@ -454,6 +537,73 @@ def main():
     toggle_colon_visibility = [True]
     update_clock(hour_label, colon_label, minute_label, toggle_colon_visibility, header_bg_color)
 
+    # --- Header Labels Section ---
+    header_labels_frame = tk.Frame(root, bg="#122080")
+    header_labels_frame.pack(fill=tk.X)
+
+    header_labels_frame.columnconfigure(0, weight=0)  # Line
+    header_labels_frame.columnconfigure(1, weight=1)  # Destination (expands)
+    header_labels_frame.columnconfigure(2, weight=0)  # Platform
+    header_labels_frame.columnconfigure(3, weight=0)  # Arrival
+
+    def create_dual_language_label(parent, german, english, anchor="w", justify="left", padx=(5, 5)):
+        frame = tk.Frame(parent, bg="#122080")
+
+        german_label = tk.Label(
+            frame,
+            text=german,
+            font=("DB Neo Screen Sans Bold", int(20 * scale)),
+            fg="white",
+            bg="#122080",
+            anchor=anchor,
+            justify=justify
+        )   
+        german_label.pack(anchor=anchor)
+
+        english_label = tk.Label(
+            frame,
+            text=english,
+            font=("DB Neo Screen Sans Regular", int(16 * scale), "italic"),
+            fg="white",
+            bg="#122080",
+            anchor=anchor,
+            justify=justify
+        )
+        english_label.pack(anchor=anchor)
+        
+        return frame
+
+    line_header = create_dual_language_label(
+        header_labels_frame, "Linie", "Line",
+        anchor="center", justify="left", padx=(10, 5)
+    )
+    line_header.grid(row=0, column=0, sticky="w", padx=(10, 5))
+
+    destination_header = create_dual_language_label(
+        header_labels_frame, "Ziel", "Destination",
+        anchor="w", justify="center"
+    )
+    destination_header.config(width=50)  # Adjust width as needed
+    destination_header.grid(row=0, column=1, sticky="nw", padx=(5, 5))
+    destination_header.place(x=120)
+
+    platform_header = create_dual_language_label(
+        header_labels_frame, "Gleis", "Platform",
+        anchor="e", justify="right"
+    )
+    platform_header.config(width=10)  # Adjust width as needed
+    platform_header.grid(row=0, column=2, sticky="e", padx=(5, 15))
+
+    arrival_header = create_dual_language_label(
+        header_labels_frame, "Geplant", "Scheduled",
+        anchor="e", justify="right"
+    )
+    arrival_header.grid(row=0, column=3, sticky="e", padx=(5, 10))
+    # --- End Header Labels Section ---
+
+    separator = tk.Frame(root, bg="white", height=2)
+    separator.pack(fill=tk.X, pady=(2, 2))
+    
     content_frame = tk.Frame(root, bg="#122080")
     content_frame.pack(expand=True, fill=tk.BOTH)
 
@@ -469,13 +619,11 @@ def main():
 
         logging.info("Application closing")
 
-        # Call root.quit() to stop mainloop immediately and avoid further callbacks
         try:
             root.quit()
         except Exception:
             pass
 
-        # Destroy root safely after a short delay
         root.after(50, root.destroy)
 
     root.protocol("WM_DELETE_WINDOW", on_closing)
